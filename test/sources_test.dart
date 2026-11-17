@@ -62,6 +62,25 @@ class SourceFixtureRepository extends FixtureRepository {
 }
 
 void main() {
+  test('黄果视频、AI 和旧版保持三个独立站源', () {
+    final sources = [
+      SourceSite.byId('huangguo-video'),
+      SourceSite.byId('huangguoai'),
+      SourceSite.byId('cloudfront'),
+    ];
+    final groups = SourceGroup.fromSources(sources);
+    expect(groups.map((group) => group.id).toList(), [
+      'huangguo-video',
+      'huangguoai',
+      'cloudfront',
+    ]);
+    expect(groups.map((group) => group.name).toList(), [
+      '黄果视频',
+      '黄果 AI',
+      '黄果旧版',
+    ]);
+    expect(groups.every((group) => group.sources.length == 1), isTrue);
+  });
   testWidgets('source list keeps bottom content above system navigation', (
     tester,
   ) async {

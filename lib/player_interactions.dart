@@ -623,7 +623,6 @@ class PlayerInteractions extends ChangeNotifier {
       _seekToPos = null;
       if (target != null && !_hasToasted) {
         unawaited(onSeek(target));
-        hint('${target.inSeconds > player.state.position.inSeconds ? '快进至' : '后退至'} ${formatPosition(target.inSeconds.toDouble())}');
       }
       _hudState = const GestureHudState();
       _ignoreTapUntil = DateTime.now().add(const Duration(milliseconds: 200));

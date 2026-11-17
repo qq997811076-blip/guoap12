@@ -311,8 +311,11 @@ class _PlayerControlsState extends State<PlayerControls> {
     final duration = state.duration.inMilliseconds / 1000;
     final position = state.position.inMilliseconds / 1000;
     final buffered = state.buffer.inMilliseconds / 1000;
+    final seekHud = widget.interactions.hudState;
+    final seeking = seekHud.isSeek && !seekHud.cancelSeek;
     final visible =
-        _visible || !state.playing || state.buffering || widget.panelOpen;
+        !seeking &&
+        (_visible || !state.playing || state.buffering || widget.panelOpen);
     return MouseRegion(
       onHover: (_) => _show(),
       cursor: visible ? SystemMouseCursors.basic : SystemMouseCursors.none,
@@ -341,7 +344,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                 onDoubleTapDown: _doubleTapDown,
               ),
             ),
-            if (state.buffering && widget.enabled)
+            if (state.buffering && widget.enabled && !seeking)
               const IgnorePointer(
                 child: Center(child: CircularProgressIndicator()),
               ),
@@ -404,8 +407,14 @@ class _PlayerControlsState extends State<PlayerControls> {
                 ),
               ),
             ),
-            _gestureFeedback(),
-            _seekFlashLayer(),
+            if (seeking)
+              _swipeSeekProgress(
+                duration: duration,
+                position: seekHud.seekTarget.inMilliseconds / 1000,
+                buffered: buffered,
+              ),
+            if (!seeking) _gestureFeedback(),
+            if (!seeking) _seekFlashLayer(),
           ],
         ),
       ),
@@ -578,6 +587,39 @@ class _PlayerControlsState extends State<PlayerControls> {
       return (MediaQuery.viewPaddingOf(context).bottom + 24).clamp(64.0, 104.0);
     }
     return 0;
+  }
+
+  Widget _swipeSeekProgress({
+    required double duration,
+    required double position,
+    required double buffered,
+  }) {
+    final maximum = duration > 0 ? duration : 1.0;
+    return Positioned(
+      left: 8,
+      right: 8,
+      bottom: _bottomChromeInset() + 2,
+      child: IgnorePointer(
+        child: SizedBox(
+          height: 20,
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3,
+              secondaryActiveTrackColor: Colors.white38,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+              overlayShape: SliderComponentShape.noOverlay,
+            ),
+            child: Slider(
+              key: const ValueKey('player-swipe-progress'),
+              value: position.clamp(0.0, maximum),
+              max: maximum,
+              secondaryTrackValue: buffered.clamp(0.0, maximum),
+              onChanged: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _progressRow({
