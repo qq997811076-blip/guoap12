@@ -1142,13 +1142,13 @@ class _PlayerScreenState extends State<PlayerScreen>
         await (_orientationController?.setPlayback(
               this,
               fullscreen: fullscreen,
-              aspectRatio: _aspectRatio,
+              aspectRatio: fullscreen ? 0 : _aspectRatio,
             ) ??
             SystemChrome.setPreferredOrientations(
               AppOrientationController.orientations(
                 television: _television,
                 fullscreen: fullscreen,
-                aspectRatio: _aspectRatio,
+                aspectRatio: fullscreen ? 0 : _aspectRatio,
               ),
             ));
       }
