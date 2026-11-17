@@ -312,9 +312,10 @@ class _PlayerControlsState extends State<PlayerControls> {
     final position = state.position.inMilliseconds / 1000;
     final buffered = state.buffer.inMilliseconds / 1000;
     final seekHud = widget.interactions.hudState;
-    final seeking = seekHud.isSeek && !seekHud.cancelSeek;
+    final horizontalSeeking = seekHud.isSeek;
+    final seeking = horizontalSeeking && !seekHud.cancelSeek;
     final visible =
-        !seeking &&
+        !horizontalSeeking &&
         (_visible || !state.playing || state.buffering || widget.panelOpen);
     return MouseRegion(
       onHover: (_) => _show(),
@@ -413,8 +414,8 @@ class _PlayerControlsState extends State<PlayerControls> {
                 position: seekHud.seekTarget.inMilliseconds / 1000,
                 buffered: buffered,
               ),
-            if (!seeking) _gestureFeedback(),
-            if (!seeking) _seekFlashLayer(),
+            if (!horizontalSeeking) _gestureFeedback(),
+            if (!horizontalSeeking) _seekFlashLayer(),
           ],
         ),
       ),
