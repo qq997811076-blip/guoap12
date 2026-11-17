@@ -1,0 +1,148 @@
+name: Build Android APKs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build zhenguojian
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Gradle 依赖与构建缓存
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      # Flutter/Dart 包缓存
+      - name: Cache Flutter packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: flutter-pub-${{ runner.os }}-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            flutter-pub-${{ runner.os }}-
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: native/go.mod
+          cache: false
+
+      # 显式缓存 Go 模块与编译结果，避免首次构建后仍反复下载依赖。
+      - name: Cache Go modules and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('native/go.sum') }}
+          restore-keys: |
+            go-${{ runner.os }}-
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.4"
+          channel: stable
+          cache: true
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      # SDK 目录由安装器创建；先归还当前 runner 用户，避免缓存解压时 utime/chmod 权限失败。
+      - name: Fix Android SDK cache permissions
+        run: sudo chown -R "$(id -u):$(id -g)" "$ANDROID_HOME"
+
+      # 只缓存构建实际需要的 SDK 组件，不缓存整个 SDK。
+      - name: Cache Android SDK components
+        id: android-sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ANDROID_HOME }}/platform-tools
+            ${{ env.ANDROID_HOME }}/platforms/android-36
+            ${{ env.ANDROID_HOME }}/build-tools
+            ${{ env.ANDROID_HOME }}/cmake/3.22.1
+            ${{ env.ANDROID_HOME }}/ndk/28.2.13676358
+          key: android-sdk-${{ runner.os }}-api36-cmake3.22.1-ndk28.2.13676358-v2
+
+      # 缓存恢复后检查指定组件；只补装缺失组件。
+      - name: Ensure Android SDK and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          missing=0
+          [ -d "$ANDROID_HOME/platform-tools" ] || missing=1
+          [ -d "$ANDROID_HOME/platforms/android-36" ] || missing=1
+          [ -d "$ANDROID_HOME/ndk/28.2.13676358" ] || missing=1
+          [ -d "$ANDROID_HOME/cmake/3.22.1" ] || missing=1
+
+          if [ "$missing" -eq 1 ]; then
+            sdkmanager --install \
+              "platform-tools" \
+              "platforms;android-36" \
+              "ndk;28.2.13676358" \
+              "cmake;3.22.1"
+          else
+            echo "Android SDK、API 36 和指定 NDK 已从缓存恢复，跳过安装。"
+          fi
+
+      - name: Configure Android signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          python scripts/configure_signing.py
+
+          if [ -f android/key.properties ]; then
+            echo "已配置正式签名。"
+          else
+            echo "未配置正式签名，使用项目默认 Debug 签名。"
+          fi
+
+      # 仅构建真果鉴：全部站源 + ARM64
+      - name: Build zhenguojian ARM64 APK
+        run: |
+          python scripts/build_android.py \
+            --all-sources \
+            --abi arm64-v8a
+
+      - name: Remove temporary signing files
+        if: always()
+        run: python scripts/configure_signing.py --clean
+
+      # 仅上传真果鉴 APK
+      - name: Upload zhenguojian APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zhenguojian-android-arm64
+          path: |
+            dist/android/*.apk
+            dist/android/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
