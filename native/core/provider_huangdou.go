@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	huangdouBaseURL     = "https://tideember.cc"
+	huangdouBaseURL     = "https://91porny.com"
 	huangdouVersion     = "2.0.0"
 	huangdouDeviceType  = "web"
 	huangdouPlatformKey = "7961beb44246e3012ce228d6b5ced05a"
