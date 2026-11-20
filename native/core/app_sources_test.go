@@ -89,7 +89,7 @@ func TestSourceUpdatesPreservePagesOtherSourcesAndMetadata(t *testing.T) {
 	}
 }
 
-func TestYeguoSourceUpdateBatchesConfiguredPagesWithPost(t *testing.T) {
+func TestYeguoSourceUpdateLoadsAllPagesRegardlessOfBrowseLimit(t *testing.T) {
 	var pages []string
 	engine := sourceFixtureEngine(t, func(request *http.Request) (*http.Response, error) {
 		if request.URL.Host != "api.yeguo.test" || request.URL.Path != "/api/theater/exploreList" {
@@ -107,7 +107,7 @@ func TestYeguoSourceUpdateBatchesConfiguredPagesWithPost(t *testing.T) {
 		body := fmt.Sprintf(`{"status":"1","data":{"list":[{"video_id":%q,"title":"野果分页%s","description":"完整资料","episode_count":"6","serialize_status":"2"}],"page":%s,"limit":20,"total":60,"has_more":%q}}`, id, page, page, map[bool]string{true: "1", false: "0"}[page != "3"])
 		return sourceFixtureResponse(request, http.StatusOK, body), nil
 	})
-	engine.downloader.cfg.MaxPagesPerSort = 3
+	engine.downloader.cfg.MaxPagesPerSort = 1 // 更新源站不应被浏览分页配置截断
 	engine.downloader.yeguoClient().access = &yeguoAccess{base: "https://api.yeguo.test", identifier: "fixture-trace", loadedAt: time.Now()}
 
 	if err := engine.updateSource(context.Background(), sourceYeguo, "update"); err != nil {
