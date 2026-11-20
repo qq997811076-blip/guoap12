@@ -200,7 +200,7 @@ func (engine *nativeEngine) startSourceTask(source, operation string, drama nati
 		engine.mu.Unlock()
 		return nativeSourceStatus{}, fmt.Errorf("站源暂时暂停请求，请在 %d 秒后重试", max(1, int(time.Until(previous.RetryAt).Seconds()+.999)))
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	task := &nativeSourceTask{cancel: cancel}
 	engine.sourceTasks[source] = task
 	previous.Operation, previous.Running, previous.Stage = operation, true, "准备中"
@@ -290,11 +290,8 @@ func (engine *nativeEngine) updateSource(ctx context.Context, source, operation 
 		engine.changeSourceRecord(source, func(record *nativeSourceRecord) { record.Stage = "继续加载历史分页" })
 		limit := 1
 		if operation == "update" {
-			maxPages := engine.downloader.cfg.MaxPagesPerSort
-			if maxPages <= 0 {
-				maxPages = defaultConfig().MaxPagesPerSort
-			}
-			limit = max(0, maxPages-1)
+			// 更新源站必须持续加载到最后一页，不再受 MaxPagesPerSort 的浏览分页配置限制。
+			limit = -1
 		}
 		if err := engine.loadMoreSourceCatalogPages(ctx, source, limit); err != nil {
 			return err
@@ -410,6 +407,11 @@ func (engine *nativeEngine) updateSource(ctx context.Context, source, operation 
 }
 
 func (engine *nativeEngine) loadSourceCatalogPage(ctx context.Context, source string, page int) error {
+	engine.changeSourceRecord(source, func(record *nativeSourceRecord) {
+		record.Stage = fmt.Sprintf("正在加载第 %d 页", page)
+		record.Completed = page - 1
+		record.Total = 0
+	})
 	result, err := engine.nativeCatalog(ctx, nativeInput{Source: source, Page: page, Force: true})
 	if err != nil {
 		return err
@@ -420,14 +422,22 @@ func (engine *nativeEngine) loadSourceCatalogPage(ctx context.Context, source st
 		}
 		return errors.New(result.Warning)
 	}
+	engine.changeSourceRecord(source, func(record *nativeSourceRecord) {
+		record.Stage = fmt.Sprintf("已加载第 %d 页", page)
+		record.Completed = page
+		record.Total = 0
+	})
 	return nil
 }
 
 func (engine *nativeEngine) loadMoreSourceCatalogPages(ctx context.Context, source string, limit int) error {
-	if limit <= 0 {
+	if limit == 0 {
 		return nil
 	}
-	for loaded := 0; loaded < limit; loaded++ {
+	for loaded := 0; limit < 0 || loaded < limit; loaded++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		current := engine.nativeCached(source)
 		if !current.HasMore {
 			return nil
@@ -437,7 +447,7 @@ func (engine *nativeEngine) loadMoreSourceCatalogPages(ctx context.Context, sour
 			page = 1
 		}
 		if page > 1000000 {
-			return errors.New("站源分页已达到接口范围，已保留目录位置")
+			return errors.New("站源分页已达到安全上限，已保留已加载目录")
 		}
 		if err := engine.loadSourceCatalogPage(ctx, source, page); err != nil {
 			return err
