@@ -218,6 +218,19 @@ func (limiter *requestLimiter) observeBlock(request *http.Request, response *htt
 	limiter.mu.Unlock()
 }
 
+// huangdouBackupTLSRoundTripper 只对黄豆备用主机跳过证书链验证。
+type huangdouBackupTLSRoundTripper struct {
+	secure   http.RoundTripper
+	insecure http.RoundTripper
+}
+
+func (transport huangdouBackupTLSRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	if request.URL != nil && request.URL.Scheme == "https" && strings.EqualFold(request.URL.Hostname(), "xqjurgek.top") {
+		return transport.insecure.RoundTrip(request)
+	}
+	return transport.secure.RoundTrip(request)
+}
+
 type limitedResponseBody struct {
 	io.ReadCloser
 	release func()
@@ -250,7 +263,11 @@ func (d *Downloader) doPreparedCatalogRequest(request *http.Request, timeout tim
 	if prepare != nil {
 		prepare(request)
 	}
-	response, err := d.client.Do(request)
+	client := d.client
+	if strings.EqualFold(request.URL.Hostname(), "xqjurgek.top") && d.huangdouInsecureClient != nil {
+		client = d.huangdouInsecureClient
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		cancel()
 		release()
