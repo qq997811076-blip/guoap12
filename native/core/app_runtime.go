@@ -48,6 +48,7 @@ type Downloader struct {
 	rankings              rankingCache
 	cfg                   Config
 	client                *http.Client
+	huangdouInsecureClient *http.Client // 仅黄豆备用域名使用，其他主机仍走正常证书验证
 	playbackClient        *http.Client // 禁用 HTTP/2 的备用通道（见 provider_hongguo_playback.go）
 	huangdouDetails       map[string]huangdouDetailEntry
 	huangdouDetailPending map[string]*huangdouDetailCall
@@ -286,6 +287,14 @@ func newNativeEngine(directory string) (*nativeEngine, error) {
 			}
 			return nil
 		}}
+	insecureBackupTransport := transport.Clone()
+	insecureBackupTLS := insecureBackupTransport.TLSClientConfig.Clone()
+	insecureBackupTLS.InsecureSkipVerify = true
+	insecureBackupTransport.TLSClientConfig = insecureBackupTLS
+	d.huangdouInsecureClient = &http.Client{
+		Transport: huangdouBackupTLSRoundTripper{secure: d.client.Transport, insecure: insecureBackupTransport},
+		Timeout: d.client.Timeout, CheckRedirect: d.client.CheckRedirect,
+	}
 	engine := &nativeEngine{downloader: d, directory: directory, catalogs: map[string][]nativeDrama{}, catalogStates: map[string]nativeCatalogState{}, routeLatencies: map[string]routeLatencyEntry{}}
 	engine.loadResourceSettings()
 	d.loadRankingCache()
